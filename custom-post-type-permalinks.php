@@ -111,6 +111,14 @@ class Custom_Post_Type_Permalinks {
 		}
 	}
 
+
+	private function get_post_types() {
+		if(empty($this->post_types)) {
+			$this->post_types = get_post_types( array('_builtin'=>false, 'publicly_queryable'=>true, 'show_ui' => true) );
+		}
+		return $this->post_types;
+	}
+
 	/**
 	 *
 	 * Get Custom Taxonomies parents.
@@ -153,6 +161,9 @@ class Custom_Post_Type_Permalinks {
 	 */
 	public function add_archive_rewrite_rules() {
 		$post_types = get_post_types( array('_builtin'=>false, 'publicly_queryable'=>true,'show_ui' => true) );
+
+		global $wp;
+		$wp->add_query_var("post_type_slug");
 
 		foreach ( $post_types as $post_type ):
 			if( !$post_type ) {
@@ -215,7 +226,7 @@ class Custom_Post_Type_Permalinks {
 		$permalink = '%'.$post_type.'_slug%'.$permalink;
 		$permalink = str_replace( '%postname%', '%'.$post_type.'%', $permalink );
 
-		add_rewrite_tag( '%'.$post_type.'_slug%', '('.$args->rewrite['slug'].')','post_type='.$post_type.'&slug=' );
+		add_rewrite_tag( '%'.$post_type.'_slug%', '('.$args->rewrite['slug'].')','post_type='.$post_type.'&post_type_slug=' );
 
 		$taxonomies = get_taxonomies( array("show_ui" => true, "_builtin" => false), 'objects' );
 		foreach ( $taxonomies as $taxonomy => $objects ):
@@ -224,6 +235,9 @@ class Custom_Post_Type_Permalinks {
 
 		$permalink = trim($permalink, "/" );
 		add_permastruct( $post_type, $permalink, $args->rewrite );
+
+		if(!empty($args->has_archive)) {
+		}
 
 	}
 
@@ -308,7 +322,7 @@ class Custom_Post_Type_Permalinks {
 			};
 		}
 
-		$taxonomies = get_taxonomies( array('show_ui' => true),'objects' );
+		$taxonomies = get_taxonomies( array('show_ui' => true), 'objects' );
 
 		//%taxnomomy% -> parent/child
 		//運用でケアすべきかも。
@@ -599,6 +613,36 @@ class Custom_Post_Type_Permalinks {
 				}
 			}
 		}
+
+
+		//固定ページが存在する場合のFIX。もーすこし実装を詰める。
+		if(!empty( $obj->query_vars["post_type_slug"] )) {
+			$post_type_slug = $obj->query_vars["post_type_slug"];
+			$post_types = $this->get_post_types();
+
+
+			//Slug と Post Typeの対応。
+			$slugs = array();
+			foreach ( $post_types as $key => $post_type_name ) {
+				$post_type = get_post_type_object($post_type_name);
+				$slugs[$post_type->rewrite["slug"]] = $post_type->name;
+			}
+
+			if( array_key_exists($post_type_slug, $slugs) ){
+
+				//条件をもっとシンプルに。
+				if(isset($obj->query_vars["p"]) or isset($obj->query_vars["name"]) or isset($obj->query_vars[$slugs[$post_type_slug]]) or get_post_type_object($slugs[$post_type_slug])->has_archive) {
+					$obj->query_vars["post_type"] = $slugs[$post_type_slug];
+					return;
+				}
+			}
+
+			unset($obj->query_vars["post_type"]);
+			$obj->query_vars["pagename"] = $post_type_slug;
+		}
+
+
+
 	}
 
 
@@ -803,4 +847,13 @@ class Custom_Post_Type_Permalinks {
 $custom_post_type_permalinks = new Custom_Post_Type_Permalinks;
 $custom_post_type_permalinks = apply_filters('custom_post_type_permalinks', $custom_post_type_permalinks);
 $custom_post_type_permalinks->add_hook();
+
+add_action("get_header",function(){
+	global $wp_rewrite;
+	?>
+	<pre>
+		<?php print_r($wp_rewrite);?>
+	</pre>
+	<?php
+});
 ?>
